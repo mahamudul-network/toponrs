@@ -679,9 +679,12 @@ VARIANTS = {
     'e_collab':    _v(collab=True),                              # collab feature alone
     'e_collab_gf': _v(collab=True, gf=True, fusion='gate'),      # + graph stats
     'e_best':      _v(collab=True, gf=True, ns=True,
-                      fusion='gate', neg_mode='2hop'),           # Euclidean best
+                      fusion='gate', neg_mode='2hop'),           # Euclidean Full (primary)
     'h_best':      _v(collab=True, gf=True, hyp=True, reg=True,
-                      hyp_fix=True, fusion='gate'),              # hyperbolic best
+                      hyp_fix=True, fusion='gate'),              # hyperbolic (multi-change)
+    # ISOLATED scorer ablation: identical to e_best but hyperbolic scorer
+    'e_best_hyp':  _v(collab=True, gf=True, ns=True, fusion='gate',
+                      neg_mode='2hop', hyp=True, hyp_fix=True),  # e_best + Poincare scorer ONLY
 }
 
 def set_seed(seed):
@@ -694,6 +697,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--variant', default='full', choices=list(VARIANTS.keys()),
                         help="base=NRMS, full=TopoNRS, gf/hyp/ns=single-component ablations")
+    parser.add_argument('--dataset', default='small', choices=['small', 'large'],
+                        help="MIND-small or MIND-large")
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--gpu', type=int, default=None)
     parser.add_argument('--epochs', type=int, default=6)
@@ -721,8 +726,17 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     run_name = f"{args.variant}_seed{args.seed}"
 
-    adj_path = os.path.join(TOPO_DIR, 'coclick_adj.npz')
-    news2idx_path = os.path.join(TOPO_DIR, 'news2idx.json')
+    # dataset-specific paths (MIND-small default; MIND-large uses _mindlarge feature files)
+    if args.dataset == 'large':
+        train_dir = '../mind_dataset/MINDlarge_train'
+        dev_dir = '../mind_dataset/MINDlarge_dev'
+        suf = '_mindlarge'
+        run_name = f"{args.variant}_large_seed{args.seed}"
+    else:
+        train_dir, dev_dir, suf = MIND_TRAIN, MIND_DEV, ''
+
+    adj_path = os.path.join(TOPO_DIR, f'coclick_adj{suf}.npz')
+    news2idx_path = os.path.join(TOPO_DIR, f'news2idx{suf}.json')
 
     topo_reg = None
     if cfg['reg']:
@@ -732,13 +746,13 @@ def main():
     if cfg['ns']:
         neg_sampler = TopoNegativeSampler(
             adj_path, news2idx_path, mode=cfg['neg_mode'],
-            cand_path=os.path.join(TOPO_DIR, 'hard_neg_candidates.pkl'))
+            cand_path=os.path.join(TOPO_DIR, f'hard_neg_candidates{suf}.pkl'))
 
-    ph_feat_path = os.path.join(TOPO_DIR, 'news_ph_features.pkl') if cfg['gf'] else None
+    ph_feat_path = os.path.join(TOPO_DIR, f'news_ph_features{suf}.pkl') if cfg['gf'] else None
 
     if cfg.get('collab'):
         global COLLAB_FEATURES
-        with open(os.path.join(TOPO_DIR, 'neighbor_context.pkl'), 'rb') as f:
+        with open(os.path.join(TOPO_DIR, f'neighbor_context{suf}.pkl'), 'rb') as f:
             COLLAB_FEATURES = pickle.load(f)
         print(f"Collaborative context loaded: {len(COLLAB_FEATURES)} articles")
 
@@ -751,7 +765,7 @@ def main():
                     use_hyperbolic=cfg['hyp'], hyp_fix=cfg['hyp_fix'],
                     fusion=cfg['fusion'], unfreeze_bert=cfg['unfreeze'],
                     collab_dim=COLLAB_DIM if cfg.get('collab') else 0).to(device)
-    r = train_model(run_name, model, MIND_TRAIN, MIND_DEV, args.epochs,
+    r = train_model(run_name, model, train_dir, dev_dir, args.epochs,
                     args.batch_size, args.lr, topo_reg,
                     validate_every=args.validate_every,
                     ph_features_path=ph_feat_path,

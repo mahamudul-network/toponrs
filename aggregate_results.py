@@ -9,11 +9,11 @@ metric arrays) and writes:
   results/seed_runs/aggregate_table.txt   (LaTeX-ready rows)
 
 Significance methodology:
-  * across-seed: Welch two-sample t-test on the per-seed final metrics
-    (n = number of seeds per model);
+  * across-seed: PAIRED t-test on the per-seed final metrics, aligned by
+    the shared seed set (the two models use the same seeds);
   * per-impression paired: for each impression, the metric is averaged
     across seeds within each model, giving two paired vectors over the
-    ~18k validation impressions; we report a paired t-test and a
+    73,152 validation impressions; we report a paired t-test and a
     Wilcoxon signed-rank test on those vectors.
 """
 import os, json, glob, argparse
@@ -54,7 +54,7 @@ def per_impression_mean(runs, metric):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--run_dir', default='results/seed_runs')
-    ap.add_argument('--treatment', default='full')
+    ap.add_argument('--treatment', default='e_best')
     ap.add_argument('--control', default='base')
     args = ap.parse_args()
 
@@ -81,13 +81,20 @@ def main():
     # significance: treatment vs control
     sig = {}
     if args.treatment in runs and args.control in runs:
+        # align by seed so the across-seed test is genuinely paired
+        t_by_seed = {r['final']['seed']: r['final'] for r in runs[args.treatment]}
+        c_by_seed = {r['final']['seed']: r['final'] for r in runs[args.control]}
+        shared = sorted(set(t_by_seed) & set(c_by_seed))
         for m in METRICS:
-            t_vals = np.array([r['final'][m] for r in runs[args.treatment]])
-            c_vals = np.array([r['final'][m] for r in runs[args.control]])
+            t_vals = np.array([t_by_seed[s][m] for s in shared])
+            c_vals = np.array([c_by_seed[s][m] for s in shared])
             entry = {}
-            if len(t_vals) > 1 and len(c_vals) > 1:
-                tt = stats.ttest_ind(t_vals, c_vals, equal_var=False)
-                entry['across_seed_welch'] = {'t': float(tt.statistic), 'p': float(tt.pvalue)}
+            if len(shared) > 1:
+                # shared seeds -> PAIRED t-test (not Welch/independent)
+                tt = stats.ttest_rel(t_vals, c_vals)
+                entry['across_seed_paired_t'] = {'t': float(tt.statistic),
+                                                 'p': float(tt.pvalue),
+                                                 'n_seeds': len(shared)}
             ids_t, pi_t = per_impression_mean(runs[args.treatment], m)
             ids_c, pi_c = per_impression_mean(runs[args.control], m)
             assert ids_t == ids_c, "impression ids differ between models"
@@ -116,8 +123,8 @@ def main():
         for m, e in sig.items():
             f.write(f"{LABELS[m]}: {args.treatment} vs {args.control}: "
                     f"mean diff {e['mean_improvement']:+.4f}")
-            if 'across_seed_welch' in e:
-                f.write(f" | across-seed Welch p={e['across_seed_welch']['p']:.4g}")
+            if 'across_seed_paired_t' in e:
+                f.write(f" | across-seed paired-t p={e['across_seed_paired_t']['p']:.4g}")
             f.write(f" | paired t p={e['paired_t']['p']:.4g}")
             if 'wilcoxon' in e:
                 f.write(f" | Wilcoxon p={e['wilcoxon']['p']:.4g}")

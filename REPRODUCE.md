@@ -18,6 +18,7 @@ python build_neighbor_features.py --adj topology_data/coclick_adj_mindlarge.npz 
 ## Topological analysis
 | Paper item | Command | Output |
 |---|---|---|
+| Table 4 (clustering 0.371 exact) | `python compute_clustering_exact.py` | stdout |
 | Table 1 (Betti curves) & Fig. Betti | `python build_topology_graph.py` | `topology_data/betti_curves.json` (β₁ = \|E\|+β₀−N) |
 | Fig. 1 (true degree) | `python make_degree_fig.py` | `figures/degree_distribution.pdf` (max degree 9,321) |
 | Table 2 (flag-complex PH, H₂) | `python compute_persistent_homology.py --tag mindsmall --h2_thresh 40 --skip_skeleton` | `topology_data/ph_mindsmall.json` (β₁=β₂=0; expansion to tetrahedra, max_dim=3) |
