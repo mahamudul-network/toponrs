@@ -47,7 +47,7 @@ def weight_filtration_ph(n, r, c, w, max_edges=None):
     return h0, h1, float(wmax)
 
 
-def flag_complex_persistence(n, r, c, w, thresh, max_dim=2):
+def flag_complex_persistence(n, r, c, w, thresh, max_dim=3):
     """Proper persistent homology on the FLAG (clique) complex of the
     strong-weight core, under the weight filtration. Edges enter in
     decreasing co-click weight (filtration = w_max - w); each higher
@@ -83,6 +83,7 @@ def flag_complex_persistence(n, r, c, w, thresh, max_dim=2):
         'num_vertices': int(len(nodes)),
         'num_edges': int(keep.sum()),
         'num_triangles': int(counts.get(2, 0)),
+        'num_tetrahedra': int(counts.get(3, 0)),
         'betti': [int(x) for x in betti],
         'H1_bars_finite': len(finite(by_dim[1])),
         'H1_persistence_entropy': persistence_entropy(by_dim[1]),

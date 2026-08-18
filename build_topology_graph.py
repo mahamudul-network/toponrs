@@ -99,7 +99,8 @@ def build_coclick_graph(news_users, min_shared_users=2):
 def compute_graph_statistics(adj, news_ids, user_clicks, news_users):
     """Compute graph topology statistics for the paper."""
     n = adj.shape[0]
-    degrees = np.array(adj.sum(axis=1)).flatten()
+    degrees = np.array((adj > 0).sum(axis=1)).flatten()  # true degree = neighbour count
+    strength = np.array(adj.sum(axis=1)).flatten()  # weighted strength (distinct quantity)
 
     # Connected components
     n_components, labels = connected_components(adj, directed=False)
@@ -154,7 +155,8 @@ def compute_graph_statistics(adj, news_ids, user_clicks, news_users):
 
 def compute_degree_distribution(adj):
     """Compute degree distribution for plotting."""
-    degrees = np.array(adj.sum(axis=1)).flatten()
+    degrees = np.array((adj > 0).sum(axis=1)).flatten()  # true degree = neighbour count
+    strength = np.array(adj.sum(axis=1)).flatten()  # weighted strength (distinct quantity)
     unique_degrees, counts = np.unique(degrees.astype(int), return_counts=True)
     return dict(zip(unique_degrees.tolist(), counts.tolist()))
 
@@ -211,7 +213,7 @@ def compute_persistent_homology_features(adj, news_ids, news2idx, max_dim=1, max
         # Betti-1 approximation: β₁ = |E| - |V| + β₀ (Euler characteristic)
         num_edges = len(sub_rows)
         num_vertices = len(np.unique(np.concatenate([sub_rows, sub_cols])))
-        beta_1 = max(0, num_edges - num_vertices + n_components)
+        beta_1 = max(0, num_edges + n_components - n)  # |E| + beta_0 - N (Euler char of 1-complex)
 
         betti_curves.append({
             'threshold': float(thresh),
