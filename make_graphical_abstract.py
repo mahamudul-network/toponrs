@@ -1,40 +1,38 @@
-"""Regenerate the graphical abstract with an HONEST panel (d):
-parity in mean + ~3x variance reduction over NRMS (5 seeds), replacing
-the retracted single-seed 'best on every metric' claim.
-Panels (a) degree distribution, (b) Betti curves, (c) Poincare schematic
-are reproduced from saved topology data."""
+"""Graphical abstract: topological study of news co-click graphs + honest
+negative result. Panels: (a) TRUE degree distribution, (b) Betti curves,
+(c) flag-complex PH finding, (d) parity across two datasets."""
 import json
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
 
 N = 33195
-dd = {int(k): v for k, v in json.load(open('topology_data/degree_distribution.json')).items()}
+dd = json.load(open('topology_data/degree_true_mindsmall.json'))
+deg = np.array(dd['degree']); cnt = np.array(dd['count'])
 bc = json.load(open('topology_data/betti_curves.json'))
 
 fig = plt.figure(figsize=(11, 11))
-fig.suptitle("Co-Click Graph Topology of MIND-small\nand a Topology-Informed News Recommender",
-             fontsize=17, fontweight='bold', y=0.98)
+fig.suptitle("Persistent Homology of News Co-Click Graphs\n"
+             "and a Negative Result for Topology-Informed Recommendation",
+             fontsize=15, fontweight='bold', y=0.99)
 
-# (a) degree distribution
+# (a) TRUE degree distribution
 ax = fig.add_subplot(2, 2, 1)
-ks = np.array(sorted(k for k in dd if k > 0)); ps = np.array([dd[k] for k in ks], float)
-ps = ps / ps.sum()
-ax.loglog(ks, ps, 'o', ms=3, color='#3b6ea5')
-m = ks >= 10
-c = np.polyfit(np.log(ks[m]), np.log(ps[m]), 1)
-ax.loglog(ks[m], np.exp(np.polyval(c, np.log(ks[m]))), '--', color='#c0392b',
-          label=r'power-law fit $\gamma\approx1.1$')
-ax.set_xlabel('degree $k$'); ax.set_ylabel('$P(k)$')
-ax.set_title('(a) Heavy-tailed co-click degrees', fontweight='bold')
+p = cnt / cnt.sum()
+ax.loglog(deg, p, 'o', ms=3, color='#3b6ea5', alpha=0.7)
+m = deg >= 10
+a, b = np.polyfit(np.log(deg[m]), np.log(p[m]), 1)
+ax.loglog(deg[m], np.exp(b)*deg[m]**a, '--', color='#c0392b',
+          label=r'heavy-tail slope $\approx0.85$')
+ax.set_xlabel('degree $k$ (co-click neighbours)'); ax.set_ylabel('$P(k)$')
+ax.set_title('(a) True degree distribution', fontweight='bold')
 ax.legend(fontsize=9); ax.grid(alpha=0.3, which='both')
-ax.text(0.95, 0.95, '$k_{max}$=146,213\n33,195 articles\n$3.18\\times10^6$ edges',
+ax.text(0.95, 0.95, 'max degree = 9,321\nmean = 191\n33,195 articles',
         transform=ax.transAxes, ha='right', va='top', fontsize=9,
         bbox=dict(boxstyle='round', fc='#f0f0f0'))
 
-# (b) Betti curves
+# (b) Betti curves (1-skeleton)
 ax = fig.add_subplot(2, 2, 2)
 th = [e['threshold'] for e in bc]
 b0 = [e['beta_0'] for e in bc]
@@ -43,47 +41,46 @@ x = range(len(th))
 ax.plot(x, b0, 'o-', color='#3b6ea5', label=r'$\beta_0$')
 ax.set_ylabel(r'$\beta_0$ (components)', color='#3b6ea5')
 ax2 = ax.twinx()
-ax2.plot(x, np.array(b1) + 1, 's-', color='#e07b1a', label=r'$\beta_1$')
-ax2.set_yscale('symlog'); ax2.set_ylabel(r'$\beta_1$ (cycles, symlog)', color='#e07b1a')
+ax2.plot(x, np.array(b1)+1, 's-', color='#e07b1a', label=r'$\beta_1$')
+ax2.set_yscale('symlog'); ax2.set_ylabel(r'$\beta_1$ (1-skeleton, symlog)', color='#e07b1a')
 ax.set_xticks(list(x)); ax.set_xticklabels([int(t) for t in th], fontsize=7)
 ax.set_xlabel(r'co-click threshold $\varepsilon$ (high $\to$ low)')
-ax.set_title(r'(b) Betti curves: forest $\to$ cycle-rich', fontweight='bold')
+ax.set_title('(b) Betti curves (graph 1-skeleton)', fontweight='bold')
 ax.grid(alpha=0.3)
 
-# (c) Poincare schematic
-ax = fig.add_subplot(2, 2, 3)
-circ = plt.Circle((0, 0), 1, fill=False, color='k', lw=1.5); ax.add_patch(circ)
-rng = np.random.default_rng(0)
-ang = rng.uniform(0, 2*np.pi, 40); rad = rng.uniform(0.75, 0.98, 40)
-ax.scatter(rad*np.cos(ang), rad*np.sin(ang), s=18, color='#3b6ea5', label='niche articles')
-ha = rng.uniform(0, 2*np.pi, 6); hr = rng.uniform(0, 0.35, 6)
-ax.scatter(hr*np.cos(ha), hr*np.sin(ha), marker='*', s=180, color='#e8a33d',
-           edgecolor='k', label='popular hubs')
-ax.scatter([0.72], [0.4], marker='D', s=90, color='#b03030', label='user')
-ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.25, 1.1); ax.set_aspect('equal'); ax.axis('off')
-ax.set_title('(c) Hyperbolic embedding (optional)', fontweight='bold')
-ax.legend(loc='upper left', fontsize=8)
-ax.text(0, -1.18, u'Poincaré ball $\\mathbb{B}^d_c$', ha='center', fontsize=10)
+# (c) flag-complex PH finding
+ax = fig.add_subplot(2, 2, 3); ax.axis('off')
+ax.set_title('(c) Genuine persistent homology (GUDHI)', fontweight='bold')
+ax.text(0.5, 0.62,
+        r'Flag (clique) complex, expanded to tetrahedra:',
+        transform=ax.transAxes, ha='center', fontsize=11)
+ax.text(0.5, 0.40,
+        r'$\beta_1 = \beta_2 = 0$  on both datasets',
+        transform=ax.transAxes, ha='center', fontsize=15, color='#b03030',
+        fontweight='bold')
+ax.text(0.5, 0.16,
+        '1-skeleton cycles are filled by triangles\n'
+        '(clique-like cores); the genuine\n'
+        'topological signal is in $H_0$ (communities).',
+        transform=ax.transAxes, ha='center', va='center', fontsize=10,
+        bbox=dict(boxstyle='round', fc='#eef3f8', ec='#3b6ea5'))
 
-# (d) HONEST result -- horizontal bars with labels/values outside the bars
+# (d) parity across two datasets
 ax = fig.add_subplot(2, 2, 4); ax.axis('off')
-ax.set_title('(d) Honest result (5 seeds)', fontweight='bold', loc='center')
-axb = ax.inset_axes([0.18, 0.55, 0.78, 0.34])
-labels = ['NRMS', 'TopoNRS']
-means = [0.6745, 0.6759]; stds = [0.0074, 0.0023]
-ypos = [1, 0]
-axb.barh(ypos, means, xerr=stds, height=0.55,
-         color=['#8aa9c9', '#b03030'], error_kw=dict(ecolor='k', capsize=5))
-for yi, mu, sd in zip(ypos, means, stds):
-    axb.text(mu + sd + 0.0008, yi, f'{mu:.4f}$\\pm${sd:.4f}', va='center',
-             ha='left', fontsize=9)
-axb.set_yticks(ypos); axb.set_yticklabels(labels, fontsize=10)
-axb.set_xlim(0.665, 0.692); axb.set_xlabel('AUC (val., 5 seeds)', fontsize=9)
-axb.spines[['top', 'right']].set_visible(False)
-ax.text(0.5, 0.24,
-        'AUC parity in mean (paired $p=0.66$)\n'
-        r'but $\approx$3$\times$ lower seed variance (std 0.0074$\to$0.0023).'
-        '\nCo-click topology acts as a stabilising prior,\nnot an accuracy gain.',
+ax.set_title('(d) Negative result, two datasets', fontweight='bold')
+axb = ax.inset_axes([0.16, 0.52, 0.80, 0.36])
+groups = ['MIND-small', 'MIND-large']
+nrms = [0.6745, 0.6907]; topo = [0.6759, 0.6903]
+y = np.arange(2); h = 0.35
+axb.barh(y+h/2, nrms, h, color='#8aa9c9', label='NRMS')
+axb.barh(y-h/2, topo, h, color='#b03030', label='TopoNRS')
+axb.set_yticks(y); axb.set_yticklabels(groups, fontsize=9)
+axb.set_xlim(0.66, 0.70); axb.set_xlabel('AUC', fontsize=9)
+axb.legend(fontsize=8, loc='lower right'); axb.spines[['top','right']].set_visible(False)
+ax.text(0.5, 0.22,
+        'TopoNRS matches NRMS in mean accuracy\n'
+        r'($p=0.66$ small, $p=0.61$ large): a strong content'
+        '\nencoder already captures the signal.',
         transform=ax.transAxes, ha='center', va='center', fontsize=10,
         bbox=dict(boxstyle='round', fc='#fdf3e7', ec='#e07b1a'))
 
