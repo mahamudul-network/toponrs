@@ -28,11 +28,17 @@ python build_neighbor_features.py --adj topology_data/coclick_adj_mindlarge.npz 
 ## Model (MIND-small, 5 seeds; MIND-large, 3 seeds)
 | Paper item | Command |
 |---|---|
-| Table 4 (main), Table 6 (ablation) | `bash run_seeds.sh 0 base 42 1 2 3 4` ; `bash run_seeds.sh 1 e_collab 42 1 2 3 4` ; `bash run_seeds.sh 0 e_best 42 1 2 3 4` ; `bash run_seeds.sh 1 h_best 42 1 2` |
+| Table 4 (main), Table 6 (ablation) | `bash run_seeds.sh 0 base 42 1 2 3 4` ; `bash run_seeds.sh 1 e_collab 42 1 2 3 4` ; `bash run_seeds.sh 0 e_best 42 1 2 3 4` ; `bash run_seeds.sh 1 e_best_hyp 42 1 2 3 4` (isolated scorer ablation, 5 seeds) |
 | Table 7 (MIND-large) | `bash run_seeds_large.sh 0 base 42 1 2` ; `bash run_seeds_large.sh 1 e_collab 42 1 2` |
 | Significance (Sec. 6.5) | `python aggregate_results.py --treatment e_best --control base` |
 
 Variants: `base` = NRMS backbone (Euclidean dot product); `e_collab` =
 TopoNRS with collaborative co-click context; `e_best` = collab + graph
-statistics + 2-hop negatives; `h_best` = the same with the
-Poincaré-distance scorer (reported as a negative result).
+statistics + 2-hop negatives (the Euclidean Full model, no topology
+regulariser); `e_best_hyp` = identical to `e_best` but with the
+Poincaré-distance scorer (the controlled scorer ablation, reported as a
+negative result). `h_best` is a separate, differently-configured
+hyperbolic variant (adds the topology regulariser, drops negatives) and is
+NOT the isolated ablation reported in the paper; use `e_best_hyp` for that.
+None of the reported models use the optional topology regulariser
+(`reg=False`).
