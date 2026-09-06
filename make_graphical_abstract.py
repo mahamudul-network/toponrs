@@ -10,6 +10,10 @@ import matplotlib.pyplot as plt
 N = 33195
 dd = json.load(open('topology_data/degree_true_mindsmall.json'))
 deg = np.array(dd['degree']); cnt = np.array(dd['count'])
+# The degree histogram holds only the connected nodes, so quote both means:
+# the whole-graph mean 2|E|/N (isolates included) and the connected-node mean.
+_n_conn = int(cnt.sum()); _sum_deg = int((deg * cnt).sum())
+mean_all, mean_conn = _sum_deg / N, _sum_deg / _n_conn
 bc = json.load(open('topology_data/betti_curves.json'))
 
 fig = plt.figure(figsize=(11, 11))
@@ -24,12 +28,14 @@ ax.loglog(deg, p, 'o', ms=3, color='#3b6ea5', alpha=0.7)
 m = deg >= 10
 a, b = np.polyfit(np.log(deg[m]), np.log(p[m]), 1)
 ax.loglog(deg[m], np.exp(b)*deg[m]**a, '--', color='#c0392b',
-          label=r'heavy-tail slope $\approx0.85$')
+          label=r'tail exponent $\approx0.85$')
 ax.set_xlabel('degree $k$ (co-click neighbours)'); ax.set_ylabel('$P(k)$')
 ax.set_title('(a) True degree distribution', fontweight='bold')
 ax.legend(fontsize=9); ax.grid(alpha=0.3, which='both')
-ax.text(0.95, 0.95, 'max degree = 9,321\nmean = 191\n33,195 articles',
-        transform=ax.transAxes, ha='right', va='top', fontsize=9,
+ax.text(0.95, 0.95,
+        f'max degree = 9,321\nmean (all nodes) = {mean_all:.0f}\n'
+        f'mean (connected) = {mean_conn:.0f}\n33,195 articles',
+        transform=ax.transAxes, ha='right', va='top', fontsize=8.5,
         bbox=dict(boxstyle='round', fc='#f0f0f0'))
 
 # (b) Betti curves (1-skeleton)
@@ -40,6 +46,9 @@ b1 = [max(0, e['num_edges'] + e['beta_0'] - N) for e in bc]
 x = range(len(th))
 ax.plot(x, b0, 'o-', color='#3b6ea5', label=r'$\beta_0$')
 ax.set_ylabel(r'$\beta_0$ (components)', color='#3b6ea5')
+from matplotlib.ticker import FuncFormatter
+ax.yaxis.set_major_formatter(FuncFormatter(
+    lambda v, _: f'{int(round(v)):,}' if abs(v) >= 10000 else f'{int(round(v)):d}'))
 ax2 = ax.twinx()
 ax2.plot(x, np.array(b1)+1, 's-', color='#e07b1a', label=r'$\beta_1$')
 ax2.set_yscale('symlog'); ax2.set_ylabel(r'$\beta_1$ (1-skeleton, symlog)', color='#e07b1a')
@@ -51,18 +60,23 @@ ax.grid(alpha=0.3)
 # (c) flag-complex PH finding
 ax = fig.add_subplot(2, 2, 3); ax.axis('off')
 ax.set_title('(c) Genuine persistent homology (GUDHI)', fontweight='bold')
-ax.text(0.5, 0.62,
-        r'Flag (clique) complex, expanded to tetrahedra:',
+ax.text(0.5, 0.70,
+        r'Flag (clique) complex on the strongly weighted cores,',
         transform=ax.transAxes, ha='center', fontsize=11)
-ax.text(0.5, 0.40,
+ax.text(0.5, 0.62,
+        r'expanded to tetrahedra:',
+        transform=ax.transAxes, ha='center', fontsize=11)
+ax.text(0.5, 0.44,
         r'$\beta_1 = \beta_2 = 0$  on both datasets',
         transform=ax.transAxes, ha='center', fontsize=15, color='#b03030',
         fontweight='bold')
 ax.text(0.5, 0.16,
-        '1-skeleton cycles are filled by triangles\n'
-        '(clique-like cores); the genuine\n'
-        'topological signal is in $H_0$ (communities).',
-        transform=ax.transAxes, ha='center', va='center', fontsize=10,
+        'Within these cores the 1-skeleton cycles are\n'
+        r'filled by triangles ($\varepsilon\geq40$ core: $17{,}121\to0$),'
+        '\nso the persistent signal is $H_0$ component merging.\n'
+        'The cores are small (2.9% of nodes, 0.6% of edges),\n'
+        'so the finding is scoped to them.',
+        transform=ax.transAxes, ha='center', va='center', fontsize=9,
         bbox=dict(boxstyle='round', fc='#eef3f8', ec='#3b6ea5'))
 
 # (d) parity across two datasets
@@ -87,4 +101,5 @@ ax.text(0.5, 0.22,
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.savefig('submission/graphical_abstract.png', dpi=200, bbox_inches='tight')
 plt.savefig('submission/graphical_abstract.pdf', bbox_inches='tight')
-print('wrote submission/graphical_abstract.{png,pdf}')
+print(f'wrote submission/graphical_abstract.{{png,pdf}} '
+      f'(mean_all {mean_all:.2f}, mean_connected {mean_conn:.2f})')
