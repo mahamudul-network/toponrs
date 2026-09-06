@@ -17,6 +17,7 @@ from collections import defaultdict
 
 import numpy as np
 from scipy import sparse, stats
+from scipy.sparse.csgraph import connected_components
 
 OK, BAD = [], []
 
@@ -125,6 +126,17 @@ def main():
                'whole-graph mean degree is $2|\\mathcal{E}|/|\\mathcal{N}| = 191.3$',
                'mean degree is $361.7$')
         in_tex('ER comparison', tex, 'about $18$ times the')
+        in_tex('AUC tie term inside the sum', tex,
+               '\\mathbb{1}\\!\\left[\\hat{y}_{ip} = \\hat{y}_{in}\\right] \\right),')
+        for gone in ('fixed before the results were examined',
+                     'ablation---are unaffected',
+                     'TopoNRS reduces to standard NRMS training',
+                     'significantly \\emph{lowers}',
+                     'Replication on a Second Dataset',
+                     'generalises across'):
+            (BAD if gone in re.sub(r'\s+', ' ', tex) else OK).append(
+                (f'retracted phrasing removed: "{gone}"',
+                 'still present' if gone in tex else 'gone', 'gone', ''))
 
     # ------------------------------------------------ Betti curves (Table 1)
     bt = json.load(open(os.path.join(a.topo, 'betti_curves.json')))
@@ -157,6 +169,36 @@ def main():
             check(f'{tag} eps>={eps} tetrahedra', d['tetrahedra'], tet)
             check(f'{tag} eps>={eps} beta_1', d['betti1'], 0)
             check(f'{tag} eps>={eps} beta_2', d['betti2'], 0)
+    # Table 3 MIND rows: full graph and eps>=40 core must each be internally
+    # consistent, and the core statistics must NOT be the full-graph ones.
+    check('Table 3 full-graph beta_1 (1-skeleton, tau=2)',
+          E + gs['num_connected_components'] - N, 3157644)
+    A = sparse.load_npz(os.path.join(a.topo, 'coclick_adj.npz')).tocsr()
+    rr, cc = A.nonzero(); mm = rr < cc; rr, cc = rr[mm], cc[mm]
+    ww = np.asarray(A[rr, cc]).ravel()
+    kp = ww >= 40
+    nd = np.unique(np.concatenate([rr[kp], cc[kp]]))
+    rmp = {int(v): i for i, v in enumerate(nd)}
+    ri = np.array([rmp[int(x)] for x in rr[kp]]); ci = np.array([rmp[int(x)] for x in cc[kp]])
+    S = sparse.csr_matrix((np.ones(len(ri) * 2),
+                           (np.concatenate([ri, ci]), np.concatenate([ci, ri]))),
+                          shape=(len(nd), len(nd)))
+    S.data[:] = 1.0; S.setdiag(0); S.eliminate_zeros()
+    dg = np.asarray(S.sum(1)).ravel()
+    tr = np.asarray((S @ S).multiply(S).sum(1)).ravel() / 2.0
+    cl = np.where(dg >= 2, 2 * tr / (dg * (dg - 1)), 0.0)
+    check('Table 3 core clustering', cl.mean(), 0.778, 0.001)
+    uq, ct = np.unique(dg[dg > 0].astype(int), return_counts=True)
+    pk = ct / ct.sum(); sl = uq >= 10
+    sa, sb = np.polyfit(np.log(uq[sl]), np.log(pk[sl]), 1)
+    sr2 = 1 - ((np.log(pk[sl]) - (sa * np.log(uq[sl]) + sb)) ** 2).sum() / \
+              ((np.log(pk[sl]) - np.log(pk[sl]).mean()) ** 2).sum()
+    check('Table 3 core log-log slope', sa, -0.68, 0.005)
+    check('Table 3 core slope R2', sr2, 0.66, 0.005)
+    b0c, _ = connected_components(S, directed=False)
+    check('eps>=40 core is connected', b0c, 1)
+    check('cycle claim: edges on a cycle (%)',
+          100 * (int(kp.sum()) - (len(nd) - 1)) / int(kp.sum()), 94.7, 0.05)
     check('MIND-small eps>=40 node coverage (%)', 100 * 951 / N, 2.9, 0.05)
     check('MIND-small eps>=40 edge coverage (%)', 100 * 18071 / E, 0.6, 0.05)
     check('MIND-large eps>=678 node coverage (%)', 100 * 739 / 79546, 0.9, 0.05)

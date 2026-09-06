@@ -31,7 +31,7 @@ a, b = np.polyfit(np.log(deg[m]), np.log(p[m]), 1)
 r2 = 1 - ((np.log(p[m]) - (a*np.log(deg[m])+b))**2).sum() / ((np.log(p[m]) - np.log(p[m]).mean())**2).sum()
 xs = np.array([10, deg.max()])
 ax[0].loglog(xs, np.exp(b) * xs**a, '--', color='#c0392b', lw=2,
-             label=f'tail exponent $\\approx{-a:.2f}$ (slope ${a:.2f}$, $R^2={r2:.2f}$)')
+             label=f'log--log tail slope $\\approx{a:.2f}$ ($R^2={r2:.2f}$)')
 ax[0].set_xlabel('degree $k$ (number of co-click neighbours)')
 ax[0].set_ylabel('$P(k)$')
 ax[0].set_title('(a) True degree distribution (log--log)', fontweight='bold')

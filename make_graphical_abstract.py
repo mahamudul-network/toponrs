@@ -28,7 +28,7 @@ ax.loglog(deg, p, 'o', ms=3, color='#3b6ea5', alpha=0.7)
 m = deg >= 10
 a, b = np.polyfit(np.log(deg[m]), np.log(p[m]), 1)
 ax.loglog(deg[m], np.exp(b)*deg[m]**a, '--', color='#c0392b',
-          label=r'tail exponent $\approx0.85$')
+          label=r'log--log tail slope $\approx-0.85$')
 ax.set_xlabel('degree $k$ (co-click neighbours)'); ax.set_ylabel('$P(k)$')
 ax.set_title('(a) True degree distribution', fontweight='bold')
 ax.legend(fontsize=9); ax.grid(alpha=0.3, which='both')
