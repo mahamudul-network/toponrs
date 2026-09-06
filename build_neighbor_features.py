@@ -16,17 +16,16 @@ from scipy import sparse
 from transformers import AutoModel
 from tqdm import tqdm
 
+import argparse
 TOPO = './topology_data'
-TRAIN = '../mind_dataset/MINDsmall_train'
-DEV = '../mind_dataset/MINDsmall_dev'
 device = torch.device('cpu')  # offline, keep GPUs free for training
 
 
-def title_embeddings():
+def title_embeddings(splits):
     """Frozen BERT mean-pooled title embedding for every news id."""
     bert = AutoModel.from_pretrained('bert-base-uncased').to(device).eval()
     emb = {}
-    for split in [TRAIN, DEV]:
+    for split in splits:
         df = pd.read_table(os.path.join(split, 'news_parsed.tsv'), usecols=['id', 'title'])
         rows = df.to_dict('records')
         for i in tqdm(range(0, len(rows), 128), desc=f'BERT {os.path.basename(split)}'):
@@ -46,9 +45,16 @@ def title_embeddings():
 
 
 def main():
-    adj = sparse.load_npz(os.path.join(TOPO, 'coclick_adj.npz')).tocsr()
-    news_ids = json.load(open(os.path.join(TOPO, 'news_ids.json')))
-    emb = title_embeddings()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--adj', default=os.path.join(TOPO, 'coclick_adj.npz'))
+    ap.add_argument('--news_ids', default=os.path.join(TOPO, 'news_ids.json'))
+    ap.add_argument('--out', default=os.path.join(TOPO, 'neighbor_context.pkl'))
+    ap.add_argument('--train_dir', default='../mind_dataset/MINDsmall_train')
+    ap.add_argument('--dev_dir', default='../mind_dataset/MINDsmall_dev')
+    args = ap.parse_args()
+    adj = sparse.load_npz(args.adj).tocsr()
+    news_ids = json.load(open(args.news_ids))
+    emb = title_embeddings([args.train_dir, args.dev_dir])
     d = 768
     default = np.zeros(d, dtype=np.float32)
     title_mat = np.stack([emb.get(nid, default) for nid in news_ids])  # N,768
@@ -64,10 +70,10 @@ def main():
         w = w / w.sum()
         ctx[news_ids[i]] = (title_mat[neigh] * w[:, None]).sum(0).astype(np.float32)
 
-    with open(os.path.join(TOPO, 'neighbor_context.pkl'), 'wb') as f:
+    with open(args.out, 'wb') as f:
         pickle.dump(ctx, f)
     nz = sum(1 for v in ctx.values() if np.any(v))
-    print(f'neighbour context saved for {nz}/{n} articles')
+    print(f'neighbour context saved for {nz}/{n} articles -> {args.out}')
 
 
 if __name__ == '__main__':
