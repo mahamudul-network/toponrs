@@ -49,9 +49,16 @@ def main():
     a = ap.parse_args()
     tex = io.open(a.tex, encoding='utf-8').read() if os.path.exists(a.tex) else ''
     if not tex:
-        print(f'! manuscript not found at {a.tex}; skipping text checks')
+        BAD.append(('manuscript readable at --tex', f'MISSING: {a.tex}',
+                    'present', 'every text check was skipped'))
 
     # ---------------------------------------------------------------- dataset
+    if a.skip_raw:
+        BAD.append(('raw MIND dataset counts', 'SKIPPED via --skip-raw',
+                    'verified', 'rerun without --skip-raw before publication'))
+    elif not os.path.isdir(a.mind):
+        BAD.append(('raw MIND dataset counts', f'MISSING: {a.mind}',
+                    'verified', 'dataset counts are UNVERIFIED'))
     if not a.skip_raw and os.path.isdir(a.mind):
         tr = os.path.join(a.mind, 'MINDsmall_train')
         dv = os.path.join(a.mind, 'MINDsmall_dev')
@@ -98,7 +105,24 @@ def main():
     check('connected components', gs['num_connected_components'], 15652)
     check('largest component', gs['largest_component_size'], 17529)
     check('largest component (%)', 100 * gs['largest_component_size'] / N, 52.8, 0.05)
-    check('max weighted strength', gs['max_degree'], 146213)
+    # graph_statistics.json carries a legacy field named 'max_degree' that in
+    # fact holds the weighted strength. Never trust the name: derive both
+    # quantities from the adjacency matrix itself.
+    A_full = sparse.load_npz(os.path.join(a.topo, 'coclick_adj.npz')).tocsr()
+    Abin = (A_full > 0).astype(np.float64); Abin.setdiag(0); Abin.eliminate_zeros()
+    deg_full = np.asarray(Abin.sum(axis=1)).ravel()
+    str_full = np.asarray(A_full.sum(axis=1)).ravel()
+    check('max degree, recomputed from adjacency', deg_full.max(), 9321)
+    check('max weighted strength, recomputed from adjacency', str_full.max(), 146213)
+    check('legacy field graph_statistics.max_degree is the strength',
+          gs['max_degree'], str_full.max())
+    # exact average local clustering (the 0.371 in Table 4) -- recomputed, not read
+    tri_full = np.asarray((Abin @ Abin).multiply(Abin).sum(axis=1)).ravel() / 2.0
+    cc_full = np.where(deg_full >= 2, 2 * tri_full / (deg_full * (deg_full - 1)), 0.0)
+    check('exact avg local clustering over all nodes', cc_full.mean(), 0.371, 0.0005)
+    check('isolated nodes, recomputed', int((deg_full == 0).sum()), 15637)
+    b0_full, _ = connected_components(Abin, directed=False)
+    check('connected components, recomputed', b0_full, 15652)
     check('avg clicks per user', gs['avg_clicks_per_user'], 18.63, 0.005)
     check('avg users per article', gs['avg_users_per_article']
           if 'avg_users_per_article' in gs else gs['avg_users_per_news'], 27.56, 0.005)
@@ -205,6 +229,10 @@ def main():
     check('MIND-large eps>=678 edge coverage (%)', 100 * 12510 / 26678885, 0.05, 0.005)
     ph = json.load(open(os.path.join(a.topo, 'ph_mindsmall.json')))
     check('finite H1 bars on MIND-small core', ph['flag_ph']['H1_bars_finite'], 3)
+    check('H2 bars on MIND-small core (endpoint beta_2=0 needs 0 bars)',
+          ph['flag_ph']['H2_bars'], 0)
+    check('H2 diagram is empty', len(ph['flag_ph']['H2_diagram']), 0)
+    check('max H1 persistence on the core', ph['flag_ph']['H1_max_persistence'], 5.0, 1e-9)
 
     # ------------------------------------------------ MIND-large graph stats
     gl = json.load(open(os.path.join(a.topo, 'graph_statistics_mindlarge.json')))
@@ -324,6 +352,51 @@ def main():
     (OK if lev > 0.05 else BAD).append(
         ('variance claim kept descriptive (Levene p > 0.05)',
          f'p={lev:.3f}', 'p>0.05', ''))
+
+    # ---------------------------------------------- run configuration (C12 G/H)
+    # The "geometry-only" ablation claim must be checked against the variant
+    # definitions and against what the training runs actually printed.
+    try:
+        import ast
+        src = ast.parse(io.open('run_all_experiments.py', encoding='utf-8').read())
+        vardict = None
+        for node in ast.walk(src):
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', '') == 'VARIANTS':
+                vardict = node
+        keys = []
+        if vardict is not None:
+            for k in vardict.value.keys:
+                keys.append(k.value)
+        for want in ('e_best', 'e_best_hyp'):
+            (OK if want in keys else BAD).append(
+                (f'variant {want} defined in run_all_experiments.py',
+                 'yes' if want in keys else 'MISSING', 'yes', ''))
+    except Exception as exc:
+        BAD.append(('parse VARIANTS', repr(exc), 'parsed', ''))
+
+    for v, expect in (('e_best',     'GF=True Hyp=False NS=True/2hop Reg=False fusion=gate hyp_fix=False'),
+                      ('e_best_hyp', 'GF=True Hyp=True NS=True/2hop Reg=False fusion=gate hyp_fix=True')):
+        for sd in (42, 1, 2, 3, 4):
+            lg = os.path.join(a.runs, 'logs', f'{v}_seed{sd}.log')
+            if not os.path.exists(lg):
+                BAD.append((f'{v} seed {sd}: training log', 'missing', 'present', ''))
+                continue
+            head = io.open(lg, encoding='utf-8', errors='ignore').read(20000)
+            line = [l for l in head.split('\n') if 'Variant:' in l]
+            got = line[0].split('(')[1].split(')')[0] if line else 'NOT FOUND'
+            (OK if got == expect else BAD).append(
+                (f'{v} seed {sd}: run config', got, expect, ''))
+
+    # ------------------------------------------------- stale-claim text sweep
+    if tex:
+        flat = re.sub(r'\s+', ' ', tex)
+        for gone in ('only the scorer', 'only scorer changed', 'log-uniform',
+                     'dataset-independent', 'topology regularisation interfere',
+                     'adding one scalar parameter', 'were not themselves co-read',
+                     'expected (global) clustering'):
+            (BAD if gone in flat else OK).append(
+                (f'stale claim absent: "{gone}"',
+                 'STILL PRESENT' if gone in flat else 'gone', 'gone', ''))
 
     # ------------------------------------------------------------- reporting
     print(f'\n{len(OK)} passed, {len(BAD)} failed\n')
